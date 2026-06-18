@@ -5,6 +5,8 @@ from .models import User, UserProfile, Job, ApplicationTracker, ScrapeTask
 from .serializers import UserSerializer, UserProfileSerializer, JobSerializer, ApplicationTrackerSerializer, ScrapeTaskSerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
+import google.generativeai as genai
+import os
 
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
@@ -78,3 +80,42 @@ class ApplicationTrackerViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return ApplicationTracker.objects.filter(user=self.request.user).order_by('-updated_at')
+
+    @action(detail=True, methods=['post'])
+    def generate_cover_letter(self, request, pk=None):
+        application = self.get_object()
+        job = application.job
+        profile = request.user.profile
+        
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            return Response({'error': 'AI API key not configured'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            prompt = f"""
+            Write a professional and engaging cover letter for the following job.
+            
+            Job Title: {job.title}
+            Company: {job.company}
+            Job Description: {job.description}
+            
+            Applicant Skills: {', '.join(profile.extracted_skills)}
+            Applicant Experience: {profile.experience}
+            
+            The cover letter should highlight how the applicant's specific skills and experience match the job requirements. Keep it concise, under 400 words.
+            """
+            
+            response = model.generate_content(prompt)
+            cover_letter_text = response.text
+            
+            application.generated_cover_letter = cover_letter_text
+            application.save()
+            
+            return Response({'cover_letter': cover_letter_text})
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
