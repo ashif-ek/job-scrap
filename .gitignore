@@ -1,0 +1,15 @@
+# Virtual Environment
+venv/
+env/
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Next.js
+.next/
+node_modules/
+
+# Django
+db.sqlite3
